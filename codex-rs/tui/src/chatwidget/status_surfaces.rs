@@ -839,6 +839,7 @@ impl ChatWidget {
                     "Daybreak off".to_string()
                 },
             ),
+            StatusLineItem::ServiceTier => Some(self.service_tier_status_label().to_string()),
             StatusLineItem::RawOutput => self.raw_output_mode().then(|| "raw output".to_string()),
             StatusLineItem::ThreadName => {
                 self.thread_name.as_deref().and_then(normalize_thread_name)
@@ -893,6 +894,7 @@ impl ChatWidget {
             StatusSurfacePreviewItem::SessionId => StatusLineItem::SessionId,
             StatusSurfacePreviewItem::FastMode => StatusLineItem::FastMode,
             StatusSurfacePreviewItem::Daybreak => StatusLineItem::Daybreak,
+            StatusSurfacePreviewItem::ServiceTier => StatusLineItem::ServiceTier,
             StatusSurfacePreviewItem::RawOutput => StatusLineItem::RawOutput,
             StatusSurfacePreviewItem::WorkspaceHeadline => StatusLineItem::WorkspaceHeadline,
             StatusSurfacePreviewItem::Model => StatusLineItem::ModelName,

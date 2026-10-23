@@ -7,6 +7,7 @@ use crate::bottom_pane::slash_commands::ServiceTierCommand;
 use crate::service_tier_resolution;
 use codex_features::Feature;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
+use codex_protocol::config_types::ServiceTier;
 use codex_protocol::openai_models::SPEED_TIER_FAST;
 
 impl ChatWidget {
@@ -18,6 +19,14 @@ impl ChatWidget {
 
     pub(crate) fn current_service_tier(&self) -> Option<&str> {
         self.effective_service_tier.as_deref()
+    }
+
+    pub(super) fn service_tier_status_label(&self) -> &'static str {
+        match self.current_service_tier() {
+            Some(service_tier) if service_tier == ServiceTier::Fast.request_value() => "Fast",
+            Some(service_tier) if service_tier == ServiceTier::Flex.request_value() => "Slow",
+            _ => "Standard",
+        }
     }
 
     pub(crate) fn configured_service_tier(&self) -> Option<String> {

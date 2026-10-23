@@ -577,6 +577,8 @@ pub enum ThreadStoreToml {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 pub struct AutoReviewToml {
+    /// Provider to use from the model_providers map for guardian auto-review.
+    pub model_provider: Option<String>,
     /// Controls whether circuit-breaker interruptions include a structured error.
     /// Strict mode writes structured errors that older clients may not
     /// recognize when reading shared history. Defaults to `default`.

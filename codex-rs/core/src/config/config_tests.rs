@@ -78,6 +78,7 @@ use codex_login::test_support::auth_manager_from_optional_auth;
 use codex_model_provider::ProviderCapabilities;
 use codex_model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
 use codex_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
+use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_model_provider_info::WireApi;
 use codex_models_manager::bundled_models_response;
 use codex_network_proxy::NetworkMode;
@@ -8467,6 +8468,36 @@ experimental_policy_template = "Configured template: {{ tenant_policy_config }}"
     );
 }
 
+#[tokio::test]
+async fn load_config_resolves_auto_review_model_provider() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            model_provider: Some(OPENAI_PROVIDER_ID.to_string()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides {
+            cwd: Some(codex_home.path().to_path_buf()),
+            ..Default::default()
+        },
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        config.auto_review_model_provider_id.as_deref(),
+        Some(OPENAI_PROVIDER_ID)
+    );
+    assert!(config.auto_review_model_provider.is_some());
+
+    Ok(())
+}
+
 #[test_case::test_case("", codex_protocol::TranscriptFormat::Line; "default_line")]
 #[test_case::test_case("[guardianv2]\ntranscript_mode = 'line'", codex_protocol::TranscriptFormat::Line; "explicit_line")]
 #[test_case::test_case("[guardianv2]\ntranscript_mode = 'json'", codex_protocol::TranscriptFormat::Json; "explicit_json")]
@@ -8479,6 +8510,7 @@ async fn load_config_uses_auto_review_guardian_policy_config_and_template(
     let cfg = ConfigToml {
         features: Some(toml::from_str(features).unwrap()),
         auto_review: Some(AutoReviewToml {
+            model_provider: None,
             circuit_break_action: None,
             policy: Some("  Use the user-configured guardian policy.  ".to_string()),
             extra_policy: Some("  Use the user-configured additional policy.  ".to_string()),
@@ -8542,6 +8574,7 @@ async fn requirements_guardian_policy_beats_auto_review() -> std::io::Result<()>
         .map_err(std::io::Error::other)?;
         let cfg = ConfigToml {
             auto_review: Some(AutoReviewToml {
+                model_provider: None,
                 circuit_break_action: None,
                 policy: Some("Use the user-configured guardian policy.".to_string()),
                 extra_policy: Some("Use the user-configured additional policy.".to_string()),
@@ -8583,6 +8616,7 @@ async fn load_config_ignores_empty_auto_review_guardian_policy_config() -> std::
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         auto_review: Some(AutoReviewToml {
+            model_provider: None,
             circuit_break_action: None,
             policy: Some("   ".to_string()),
             extra_policy: Some("   ".to_string()),

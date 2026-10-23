@@ -101,6 +101,8 @@ pub enum ResponseEvent {
         response_id: String,
         token_usage: Option<TokenUsage>,
         usage_metadata: Option<ResponseUsageMetadata>,
+        /// Processing tier reported by the server for this response.
+        service_tier: Option<String>,
         /// Did the model affirmatively end its turn? Some providers do not set this,
         /// so we rely on fallback logic when this is `None`.
         end_turn: Option<bool>,

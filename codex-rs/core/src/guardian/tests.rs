@@ -4225,6 +4225,46 @@ async fn guardian_review_session_config_keeps_bedrock_provider_for_bedrock_gpt_5
 }
 
 #[tokio::test]
+async fn guardian_review_session_config_uses_auto_review_provider_override() {
+    let mut parent_config = test_config().await;
+    parent_config.model_provider_id = AMAZON_BEDROCK_PROVIDER_ID.to_string();
+    parent_config.model_provider =
+        ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
+    parent_config.auto_review_model_provider_id = Some(OPENAI_PROVIDER_ID.to_string());
+    parent_config.auto_review_model_provider = Some(ModelProviderInfo::create_openai_provider(
+        /*base_url*/ None,
+    ));
+
+    let guardian_config = build_guardian_review_session_config_for_test(
+        crate::guardian::test_host::build_reviewer_config(&parent_config).expect("reviewer config"),
+        /*live_network_config*/ None,
+        "codex-auto-review",
+        Some(ReasoningEffort::Low),
+        ReasoningSummary::default(),
+        /*personality*/ None,
+        ResolvedModelMessages::bundled(),
+    )
+    .expect("guardian config");
+
+    let mut expected_model_provider =
+        ModelProviderInfo::create_openai_provider(/*base_url*/ None);
+    expected_model_provider.request_max_retries = Some(1);
+    expected_model_provider.stream_max_retries = Some(1);
+    assert_eq!(
+        (
+            guardian_config.model,
+            guardian_config.model_provider_id,
+            guardian_config.model_provider,
+        ),
+        (
+            Some("codex-auto-review".to_string()),
+            OPENAI_PROVIDER_ID.to_string(),
+            expected_model_provider,
+        )
+    );
+}
+
+#[tokio::test]
 async fn guardian_review_session_config_uses_requirements_guardian_policy_config() {
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let workspace = tempfile::tempdir().expect("create temp dir");

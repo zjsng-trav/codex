@@ -1680,6 +1680,7 @@ async fn response_stream_records_last_model_feedback_ids() {
             response_id: "resp-123".to_string(),
             token_usage: None,
             usage_metadata: None,
+            service_tier: Some("flex".to_string()),
             end_turn: Some(true),
         }),
     ]);
@@ -1691,7 +1692,14 @@ async fn response_stream_records_last_model_feedback_ids() {
         test_model_provider(),
     );
 
-    while stream.next().await.is_some() {}
+    let mut completed_service_tier = None;
+    while let Some(event) = stream.next().await {
+        if let Ok(ResponseEvent::Completed { service_tier, .. }) = event {
+            completed_service_tier = service_tier;
+        }
+    }
+
+    assert_eq!(completed_service_tier.as_deref(), Some("flex"));
 
     let tags = tags.lock().unwrap().clone();
     assert_eq!(
@@ -2196,6 +2204,7 @@ async fn intercepted_output_reaches_trace_and_websocket_bookkeeping() -> anyhow:
             response_id: "response".into(),
             token_usage: None,
             usage_metadata: None,
+            service_tier: None,
             end_turn: None,
         }))
         .await?;

@@ -3005,6 +3005,51 @@ async fn status_line_context_used_renders_labeled_percent() {
 }
 
 #[tokio::test]
+async fn status_line_service_tier_distinguishes_fast_standard_and_slow() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.local_settings.tui.status_line = Some(vec!["service-tier".to_string()]);
+
+    for (service_tier, expected) in [
+        (Some(ServiceTier::Fast.request_value().to_string()), "Fast"),
+        (Some("default".to_string()), "Standard"),
+        (Some(ServiceTier::Flex.request_value().to_string()), "Slow"),
+        (None, "Standard"),
+    ] {
+        chat.effective_service_tier = service_tier;
+        chat.refresh_status_line();
+        assert_eq!(status_line_text(&chat), Some(expected.to_string()));
+    }
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "service-tier should remain a valid status line item"
+    );
+}
+
+#[tokio::test]
+async fn status_line_service_tier_slow_footer_snapshot() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.show_welcome_banner = false;
+    chat.local_settings.tui.status_line = Some(vec!["service-tier".to_string()]);
+    chat.effective_service_tier = Some(ServiceTier::Flex.request_value().to_string());
+    chat.refresh_status_line();
+
+    let width = 80;
+    let height = chat.desired_height(width);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
+    terminal
+        .draw(|f| chat.render(f.area(), f.buffer_mut()))
+        .expect("draw service-tier footer");
+    assert_chatwidget_snapshot!(
+        "status_line_service_tier_slow_footer",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
 async fn status_line_context_remaining_renders_labeled_percent() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

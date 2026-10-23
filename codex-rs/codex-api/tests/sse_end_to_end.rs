@@ -120,7 +120,8 @@ async fn responses_stream_parses_items_and_completed_end_to_end() -> Result<()> 
                 "total_tokens": 15,
                 "extra": { "label": "example", "items": [0, null, true] },
                 "codex_rollout_budget_units": 2.5
-            }
+            },
+            "service_tier": "flex"
         }
     });
 
@@ -169,6 +170,7 @@ async fn responses_stream_parses_items_and_completed_end_to_end() -> Result<()> 
             response_id,
             token_usage,
             usage_metadata,
+            service_tier,
             end_turn,
         } => {
             assert_eq!(response_id, "resp1");
@@ -190,6 +192,7 @@ async fn responses_stream_parses_items_and_completed_end_to_end() -> Result<()> 
                     .and_then(serde_json::Number::as_f64),
                 Some(2.5)
             );
+            assert_eq!(service_tier.as_deref(), Some("flex"));
             assert!(end_turn.is_none());
         }
         other => panic!("unexpected third event: {other:?}"),

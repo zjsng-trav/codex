@@ -11,6 +11,12 @@ use std::collections::HashMap;
 
 pub(crate) fn build_reviewer_config(parent_config: &Config) -> anyhow::Result<Config> {
     let mut config = parent_config.clone();
+    if let Some(model_provider_id) = parent_config.auto_review_model_provider_id.clone() {
+        config.model_provider_id = model_provider_id;
+    }
+    if let Some(model_provider) = parent_config.auto_review_model_provider.clone() {
+        config.model_provider = model_provider;
+    }
     config.model_provider.request_max_retries = Some(1);
     config.model_provider.stream_max_retries = Some(1);
     // Approvals wait for TurnComplete; post-turn compaction must not delay it.

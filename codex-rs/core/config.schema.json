@@ -450,6 +450,10 @@
           "description": "Additional policy text inserted into the Guardian template's `{{ extra_policy }}` slot.",
           "type": "string"
         },
+        "model_provider": {
+          "description": "Provider to use from the model_providers map for guardian auto-review.",
+          "type": "string"
+        },
         "policy": {
           "description": "Additional policy instructions inserted into the guardian prompt.",
           "type": "string"

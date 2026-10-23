@@ -670,6 +670,12 @@ pub struct Config {
     /// Info needed to make an API request to the model.
     pub model_provider: ModelProviderInfo,
 
+    /// Optional provider override used only by guardian auto-review sessions.
+    pub auto_review_model_provider_id: Option<String>,
+
+    /// Info needed to make guardian auto-review requests when a provider override is configured.
+    pub auto_review_model_provider: Option<ModelProviderInfo>,
+
     /// Deprecated: `friendly` and `pragmatic` no longer select a style.
     pub personality: Option<Personality>,
 
@@ -3949,6 +3955,32 @@ impl Config {
             })?
             .clone();
 
+        let auto_review_model_provider_id = cfg
+            .auto_review
+            .as_ref()
+            .and_then(|auto_review| auto_review.model_provider.clone());
+        let auto_review_model_provider =
+            if let Some(auto_review_model_provider_id) = auto_review_model_provider_id.as_ref() {
+                Some(
+                    model_providers
+                        .get(auto_review_model_provider_id)
+                        .ok_or_else(|| {
+                            let message =
+                                if auto_review_model_provider_id == LEGACY_OLLAMA_CHAT_PROVIDER_ID {
+                                    OLLAMA_CHAT_PROVIDER_REMOVED_ERROR.to_string()
+                                } else {
+                                    format!(
+                                        "Auto-review model provider `{auto_review_model_provider_id}` not found"
+                                    )
+                                };
+                            std::io::Error::new(std::io::ErrorKind::NotFound, message)
+                        })?
+                        .clone(),
+                )
+            } else {
+                None
+            };
+
         let shell_environment_policy = ShellEnvironmentPolicy::from(cfg.shell_environment_policy);
         let allow_login_shell = cfg.allow_login_shell.unwrap_or(true);
 
@@ -4421,6 +4453,8 @@ impl Config {
             async_compaction_threshold_percent,
             model_provider_id,
             model_provider,
+            auto_review_model_provider_id,
+            auto_review_model_provider,
             cwd: resolved_cwd,
             workspace_roots: workspace_roots.clone(),
             workspace_roots_explicit,
