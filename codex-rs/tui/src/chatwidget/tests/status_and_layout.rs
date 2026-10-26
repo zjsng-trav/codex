@@ -2922,6 +2922,33 @@ async fn stream_error_updates_status_indicator() {
 }
 
 #[tokio::test]
+async fn litellm_flex_retry_status_is_visible_and_cancelable() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-6.1-sol")).await;
+    chat.config.model_provider_id = "litellm".to_string();
+    chat.show_welcome_banner = false;
+    chat.local_settings.tui.status_line = Some(vec!["service-tier".to_string()]);
+    chat.effective_service_tier = Some(ServiceTier::Flex.request_value().to_string());
+    chat.refresh_status_line();
+    chat.local_settings.tui.animations = false;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    handle_stream_error(
+        &mut chat,
+        "Flex capacity unavailable; retrying... 1/3",
+        Some("Flex capacity unavailable.".to_string()),
+    );
+    let width = 100;
+    let height = chat.desired_height(width);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("render retry status");
+    assert_chatwidget_snapshot!(
+        "litellm_flex_retry_status",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
 async fn stream_error_restores_hidden_status_indicator() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();

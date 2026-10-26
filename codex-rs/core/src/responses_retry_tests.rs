@@ -7,6 +7,9 @@ use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use codex_http_client::RetryAfter;
 use codex_protocol::error::CodexErr;
+use codex_protocol::error::CodexErrorDetails;
+use codex_protocol::protocol::CodexErrorInfo;
+use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -96,5 +99,47 @@ async fn stream_retry_preserves_deadline_across_delayed_notification() {
     assert!(
         (advice.deadline()..=advice.deadline() + Duration::from_millis(1)).contains(&resumed_at),
         "retry resumed at {resumed_at:?}, expected {advice:?}"
+    );
+}
+
+/// Long capacity waits use virtual time so the three-retry cap stays cheap to verify.
+#[tokio::test]
+async fn litellm_flex_backoff_is_bounded_and_retains_the_error() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    Arc::make_mut(&mut turn_context.config).model_provider_id = "litellm".into();
+    let step_context = StepContext::for_test(Arc::new(turn_context));
+    let mut client_session = session.services.model_client.new_session();
+    let mut state = ResponsesStreamRetryState::default();
+    tokio::time::pause();
+    let mut delays = Vec::new();
+    for _ in 0..3 {
+        let started = Instant::now();
+        handle_response_stream_error(
+            &mut state,
+            /*max_retries*/ 5,
+            CodexErr::new(CodexErrorDetails::FlexUnavailable),
+            &mut client_session,
+            &session,
+            &step_context,
+            ResponsesStreamRequest::Sampling,
+        )
+        .await
+        .expect("LiteLLM Flex should retry");
+        delays.push((Instant::now() - started).as_secs());
+    }
+    let error = handle_response_stream_error(
+        &mut state,
+        /*max_retries*/ 5,
+        CodexErr::new(CodexErrorDetails::FlexUnavailable),
+        &mut client_session,
+        &session,
+        &step_context,
+        ResponsesStreamRequest::Sampling,
+    )
+    .await
+    .expect_err("capacity retries must stop after three attempts");
+    assert_eq!(
+        (delays, state.retries, error.to_codex_protocol_error()),
+        (vec![15, 30, 60], 3, CodexErrorInfo::FlexUnavailable)
     );
 }

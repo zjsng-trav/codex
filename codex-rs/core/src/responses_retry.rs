@@ -1,6 +1,7 @@
 //! Shared retry and transport fallback decisions for Responses requests.
 //! Content-filter guidance is recorded for sampling requests before retry decisions.
 //! Server advice controls timing without extending configured retry limits.
+//! LiteLLM sampling requests may retry temporary Flex capacity failures on the same tier.
 
 use std::time::Duration;
 
@@ -22,6 +23,7 @@ use tracing::warn;
 
 const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
 const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
+const MAX_FLEX_RETRIES: u64 = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResponsesStreamRequest {
@@ -85,7 +87,26 @@ pub(crate) async fn handle_response_stream_error(
         ResponsesStreamRequest::RemoteCompactionV2 => RetryOperation::RemoteCompactionV2,
     };
     let retry_count = retry_state.retries.saturating_add(1);
-    let Some(delay) = err.retry_delay(retry_count) else {
+    let retry_flex = turn_context.config.model_provider_id == "litellm"
+        && matches!(request, ResponsesStreamRequest::Sampling)
+        && matches!(err.details(), CodexErrorDetails::FlexUnavailable);
+    // Flex capacity is transient, but must not enter transport fallback or unbounded retries.
+    // Respect a smaller provider budget (including zero) and retain the original capacity error.
+    let max_retries = if retry_flex {
+        max_retries.min(MAX_FLEX_RETRIES)
+    } else {
+        max_retries
+    };
+    let delay = if retry_flex {
+        Some(Duration::from_secs(match retry_count {
+            0 | 1 => 15,
+            2 => 30,
+            3.. => 60,
+        }))
+    } else {
+        err.retry_delay(retry_count)
+    };
+    let Some(delay) = delay else {
         return Err(err);
     };
     let retry_after = err.retry_after();
@@ -117,7 +138,8 @@ pub(crate) async fn handle_response_stream_error(
         return Ok(());
     }
 
-    if retry_state.retries >= max_retries
+    if !retry_flex
+        && retry_state.retries >= max_retries
         && client_session.try_switch_fallback_transport(
             &turn_context.session_telemetry,
             turn_context.model_info(),
@@ -144,18 +166,19 @@ pub(crate) async fn handle_response_stream_error(
 
         // In release builds, hide the first websocket retry notification to reduce noisy
         // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
-        let report_error = retry_count > 1
+        let report_error = retry_flex
+            || retry_count > 1
             || cfg!(debug_assertions)
             || !sess.services.model_client.responses_websocket_enabled();
         if report_error {
             // Surface retry information to any UI/front-end so the user understands what is
             // happening instead of staring at a seemingly frozen screen.
-            sess.notify_stream_error(
-                turn_context,
-                format!("Reconnecting... {retry_count}/{max_retries}"),
-                err,
-            )
-            .await;
+            let message = if retry_flex {
+                format!("Flex capacity unavailable; retrying... {retry_count}/{max_retries}")
+            } else {
+                format!("Reconnecting... {retry_count}/{max_retries}")
+            };
+            sess.notify_stream_error(turn_context, message, err).await;
         }
         // Use one clock sample so local backoff telemetry retains the selected delay.
         let now = Instant::now();
