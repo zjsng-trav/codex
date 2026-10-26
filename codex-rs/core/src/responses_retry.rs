@@ -1,7 +1,8 @@
 //! Shared retry and transport fallback decisions for Responses requests.
 //! Content-filter guidance is recorded for sampling requests before retry decisions.
-//! Server advice controls timing without extending configured retry limits.
-//! LiteLLM sampling requests may retry temporary Flex capacity failures on the same tier.
+//! Server advice controls timing without extending ordinary stream retry limits.
+//! LiteLLM Flex sampling retries continue on the same tier independently of the stream budget.
+//! A zero stream retry budget disables Flex retries.
 
 use std::time::Duration;
 
@@ -23,7 +24,6 @@ use tracing::warn;
 
 const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
 const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
-const MAX_FLEX_RETRIES: u64 = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResponsesStreamRequest {
@@ -33,6 +33,7 @@ pub(crate) enum ResponsesStreamRequest {
 
 pub(crate) struct ResponsesStreamRetryState {
     retries: u64,
+    flex_retries: u64,
     connection_retries: u64,
     connection_retry_delay: Duration,
 }
@@ -41,6 +42,7 @@ impl Default for ResponsesStreamRetryState {
     fn default() -> Self {
         Self {
             retries: 0,
+            flex_retries: 0,
             connection_retries: 0,
             connection_retry_delay: INITIAL_CONNECTION_RETRY_DELAY,
         }
@@ -86,22 +88,24 @@ pub(crate) async fn handle_response_stream_error(
         ResponsesStreamRequest::Sampling => RetryOperation::Sampling,
         ResponsesStreamRequest::RemoteCompactionV2 => RetryOperation::RemoteCompactionV2,
     };
-    let retry_count = retry_state.retries.saturating_add(1);
-    let retry_flex = turn_context.config.model_provider_id == "litellm"
+    let retry_flex = max_retries > 0
+        && turn_context.config.model_provider_id == "litellm"
         && matches!(request, ResponsesStreamRequest::Sampling)
         && matches!(err.details(), CodexErrorDetails::FlexUnavailable);
-    // Flex capacity is transient, but must not enter transport fallback or unbounded retries.
-    // Respect a smaller provider budget (including zero) and retain the original capacity error.
-    let max_retries = if retry_flex {
-        max_retries.min(MAX_FLEX_RETRIES)
+    // Flex waits must not consume the ordinary stream retry budget or switch transport.
+    let retry_count = if retry_flex {
+        retry_state.flex_retries
     } else {
-        max_retries
-    };
+        retry_state.retries
+    }
+    .saturating_add(1);
     let delay = if retry_flex {
         Some(Duration::from_secs(match retry_count {
-            0 | 1 => 15,
-            2 => 30,
-            3.. => 60,
+            0 | 1 => 5,
+            2 => 10,
+            3 => 20,
+            4 => 40,
+            5.. => 60,
         }))
     } else {
         err.retry_delay(retry_count)
@@ -160,9 +164,19 @@ pub(crate) async fn handle_response_stream_error(
         return Ok(());
     }
 
-    if retry_state.retries < max_retries {
-        retry_state.retries = retry_count;
-        log_retry(request, turn_context, &err, retry_count, max_retries, delay);
+    if retry_flex || retry_state.retries < max_retries {
+        if retry_flex {
+            retry_state.flex_retries = retry_count;
+            warn!(
+                turn_id = %turn_context.sub_id,
+                attempt = retry_count,
+                ?delay,
+                "Flex capacity unavailable; retrying sampling request"
+            );
+        } else {
+            retry_state.retries = retry_count;
+            log_retry(request, turn_context, &err, retry_count, max_retries, delay);
+        }
 
         // In release builds, hide the first websocket retry notification to reduce noisy
         // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
@@ -174,7 +188,7 @@ pub(crate) async fn handle_response_stream_error(
             // Surface retry information to any UI/front-end so the user understands what is
             // happening instead of staring at a seemingly frozen screen.
             let message = if retry_flex {
-                format!("Flex capacity unavailable; retrying... {retry_count}/{max_retries}")
+                format!("Flex capacity unavailable; retrying... attempt {retry_count}")
             } else {
                 format!("Reconnecting... {retry_count}/{max_retries}")
             };

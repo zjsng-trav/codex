@@ -2933,7 +2933,7 @@ async fn litellm_flex_retry_status_is_visible_and_cancelable() {
     chat.bottom_pane.set_task_running(/*running*/ true);
     handle_stream_error(
         &mut chat,
-        "Flex capacity unavailable; retrying... 1/3",
+        "Flex capacity unavailable; retrying... attempt 1",
         Some("Flex capacity unavailable.".to_string()),
     );
     let width = 100;

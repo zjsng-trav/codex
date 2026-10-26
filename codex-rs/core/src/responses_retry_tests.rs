@@ -8,7 +8,6 @@ use crate::session::tests::make_session_and_context;
 use codex_http_client::RetryAfter;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
-use codex_protocol::protocol::CodexErrorInfo;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use std::time::Duration;
@@ -102,9 +101,9 @@ async fn stream_retry_preserves_deadline_across_delayed_notification() {
     );
 }
 
-/// Long capacity waits use virtual time so the three-retry cap stays cheap to verify.
+/// Flex retries outlive the configured stream budget without consuming it.
 #[tokio::test]
-async fn litellm_flex_backoff_is_bounded_and_retains_the_error() {
+async fn litellm_flex_retries_continue_without_consuming_stream_budget() {
     let (session, mut turn_context) = make_session_and_context().await;
     Arc::make_mut(&mut turn_context.config).model_provider_id = "litellm".into();
     let step_context = StepContext::for_test(Arc::new(turn_context));
@@ -112,11 +111,11 @@ async fn litellm_flex_backoff_is_bounded_and_retains_the_error() {
     let mut state = ResponsesStreamRetryState::default();
     tokio::time::pause();
     let mut delays = Vec::new();
-    for _ in 0..3 {
+    for _ in 0..6 {
         let started = Instant::now();
         handle_response_stream_error(
             &mut state,
-            /*max_retries*/ 5,
+            /*max_retries*/ 1,
             CodexErr::new(CodexErrorDetails::FlexUnavailable),
             &mut client_session,
             &session,
@@ -124,22 +123,21 @@ async fn litellm_flex_backoff_is_bounded_and_retains_the_error() {
             ResponsesStreamRequest::Sampling,
         )
         .await
-        .expect("LiteLLM Flex should retry");
+        .expect("Flex should keep retrying beyond the stream budget");
         delays.push((Instant::now() - started).as_secs());
     }
-    let error = handle_response_stream_error(
+    assert_eq!((delays, state.retries), (vec![5, 10, 20, 40, 60, 60], 0));
+    // A later ordinary failure still has its full configured retry budget.
+    handle_response_stream_error(
         &mut state,
-        /*max_retries*/ 5,
-        CodexErr::new(CodexErrorDetails::FlexUnavailable),
+        /*max_retries*/ 1,
+        CodexErr::InternalServerError,
         &mut client_session,
         &session,
         &step_context,
         ResponsesStreamRequest::Sampling,
     )
     .await
-    .expect_err("capacity retries must stop after three attempts");
-    assert_eq!(
-        (delays, state.retries, error.to_codex_protocol_error()),
-        (vec![15, 30, 60], 3, CodexErrorInfo::FlexUnavailable)
-    );
+    .expect("Flex waits must not consume ordinary stream retries");
+    assert_eq!(state.retries, 1);
 }
