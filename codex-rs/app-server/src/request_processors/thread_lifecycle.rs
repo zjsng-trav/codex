@@ -328,6 +328,13 @@ pub(super) async fn ensure_listener_task_running(
                         }
                     };
 
+                    if config.model_provider_id == "litellm"
+                        && let EventMsg::RawResponseCompleted(completed) = &event.msg
+                        && let Err(err) = crate::litellm_costs::record(&config.sqlite, conversation_id, completed).await
+                    {
+                        tracing::warn!("failed to record LiteLLM response cost: {err}");
+                    }
+
                     if let Some(worker) = &turn_cost_worker {
                         worker.observe_event(
                             conversation_id,

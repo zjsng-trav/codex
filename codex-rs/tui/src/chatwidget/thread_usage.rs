@@ -1,4 +1,4 @@
-//! Demand-driven estimated-cost state for the currently visible enterprise thread.
+//! Demand-driven estimated-cost state for the currently visible thread.
 
 use super::AppEvent;
 use super::ChatWidget;
@@ -355,17 +355,18 @@ impl ChatWidget {
     }
 
     pub(super) fn thread_usage_is_available(&self) -> bool {
-        self.has_codex_backend_auth
-            && !self.thread_usage.feature_disabled
+        !self.thread_usage.feature_disabled
             && self.thread_id.is_some()
-            && matches!(
-                self.plan_type,
-                Some(
-                    PlanType::Business
-                        | PlanType::EnterpriseCbpUsageBased
-                        | PlanType::EnterpriseCbpAutomation
-                )
-            )
+            && (self.config.model_provider_id == "litellm"
+                || (self.has_codex_backend_auth
+                    && matches!(
+                        self.plan_type,
+                        Some(
+                            PlanType::Business
+                                | PlanType::EnterpriseCbpUsageBased
+                                | PlanType::EnterpriseCbpAutomation
+                        )
+                    )))
     }
 
     fn thread_usage_is_selected(&self) -> bool {
@@ -388,6 +389,9 @@ impl ChatWidget {
                 Ok(TerminalTitleItem::EstimatedThreadCost) => selected.estimated_cost = true,
                 Ok(_) | Err(_) => {}
             }
+        }
+        if self.config.model_provider_id == "litellm" {
+            selected.credits = false;
         }
         selected
     }

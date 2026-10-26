@@ -74,6 +74,8 @@ mod hooks_list;
 mod host_skills;
 mod imagegen_extension;
 mod initialize;
+#[path = "litellm_cost_tests.rs"]
+mod litellm_cost;
 mod luna_reserve;
 mod marketplace_add;
 mod marketplace_remove;

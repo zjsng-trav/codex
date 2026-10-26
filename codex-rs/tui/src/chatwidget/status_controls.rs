@@ -271,7 +271,7 @@ impl ChatWidget {
             self.refreshing_status_outputs
                 .push((request_id, handle.clone()));
         }
-        if self.thread_usage_is_available() {
+        if self.config.model_provider_id != "litellm" && self.thread_usage_is_available() {
             handle.reserve_thread_usage_label_width();
             handle.set_thread_usage(self.estimated_thread_usage().cloned());
             self.add_to_history(cell);

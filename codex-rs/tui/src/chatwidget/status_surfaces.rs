@@ -805,6 +805,7 @@ impl ChatWidget {
                     format_tokens_compact(self.status_line_total_usage().output_tokens)
                 )
             }),
+            StatusLineItem::ThreadCredits if self.config.model_provider_id == "litellm" => None,
             StatusLineItem::ThreadCredits => self
                 .estimated_thread_usage()
                 .map(|usage| usage.estimated_usage_credits_micros)

@@ -616,3 +616,15 @@ and out-of-scope item IDs return invalid params (`-32602`) with
 Omitted or null cursors preserve normal first-page behavior. Continue anchored
 pages with the returned opaque string `nextCursor`; response fields and
 `backwardsCursor` semantics are unchanged.
+
+### LiteLLM thread cost in the local custom build
+
+For the `litellm` provider, `account/usage/read` with `threadId` returns the sum
+of provider-reported `usage.cost` amounts in `estimatedUsageUsdMicros`. Costs
+are stored by thread and response ID in `litellm-costs.sqlite` under the SQLite
+home, so duplicate completions and restarts do not double-count requests.
+Missing or invalid costs remain unknown. Historical responses from builds
+that did not record costs cannot be reconstructed from local token counts.
+LiteLLM costs have no Codex credit equivalent; the TUI hides thread credits
+for this provider. Account-wide usage and Enterprise billing keep their
+existing behavior.

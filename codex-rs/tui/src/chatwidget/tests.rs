@@ -257,6 +257,8 @@ mod history_projection;
 mod history_replay;
 #[path = "tests/home_cleanup_tests.rs"]
 mod home_cleanup_tests;
+#[path = "tests/litellm_cost_tests.rs"]
+mod litellm_cost;
 #[path = "tests/luna_reserve_usage_tests.rs"]
 mod luna_reserve_usage_tests;
 mod mcp_startup;

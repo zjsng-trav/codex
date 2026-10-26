@@ -1268,6 +1268,33 @@ impl AccountRequestProcessor {
             })
             .transpose()?;
 
+        if self.config.model_provider_id == "litellm"
+            && let Some(thread_id) = thread_id
+        {
+            let usd_micros =
+                crate::litellm_costs::thread_usd_micros(&self.config.sqlite, thread_id)
+                    .await
+                    .map_err(|err| {
+                        internal_error(format!("failed to read LiteLLM thread cost: {err}"))
+                    })?;
+            return Ok(GetAccountTokenUsageResponse {
+                summary: AccountTokenUsageSummary {
+                    lifetime_tokens: None,
+                    peak_daily_tokens: None,
+                    longest_running_turn_sec: None,
+                    current_streak_days: None,
+                    longest_streak_days: None,
+                },
+                daily_usage_buckets: None,
+                thread_usage: Some(codex_app_server_protocol::ThreadUsage {
+                    thread_id: thread_id.to_string(),
+                    estimated_usage_credits_micros: 0,
+                    estimated_usage_usd_micros: usd_micros,
+                    groups: Vec::new(),
+                }),
+            });
+        }
+
         let Some((auth, http_client_factory)) =
             self.auth_manager.auth_with_http_client_factory().await
         else {
