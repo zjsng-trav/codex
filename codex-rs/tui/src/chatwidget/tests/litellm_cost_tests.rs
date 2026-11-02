@@ -37,6 +37,7 @@ async fn litellm_thread_cost_renders_without_enterprise_auth_and_hides_credits()
             thread_id: thread_id.to_string(),
             estimated_usage_credits_micros: 0,
             estimated_usage_usd_micros: Some(1_250_000),
+            native_usage_usd_micros: None,
             groups: Vec::new(),
         })),
     ));

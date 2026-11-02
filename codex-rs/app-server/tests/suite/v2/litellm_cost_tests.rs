@@ -81,6 +81,7 @@ async fn litellm_thread_cost_uses_reported_usage_and_survives_server_restart() -
             thread_id: thread_id.clone(),
             estimated_usage_credits_micros: 0,
             estimated_usage_usd_micros: Some(1_250_000),
+            native_usage_usd_micros: None,
             groups: Vec::new(),
         }),
     };

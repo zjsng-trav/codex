@@ -1311,6 +1311,7 @@ impl AccountRequestProcessor {
                     thread_id: thread_id.to_string(),
                     estimated_usage_credits_micros: 0,
                     estimated_usage_usd_micros: usd_micros,
+                    native_usage_usd_micros: None,
                     groups: Vec::new(),
                 }),
             });
