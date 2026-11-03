@@ -31,6 +31,49 @@ Try Flex for codebase exploration, documentation, planned refactors, and other w
 
 You need an Apple Silicon Mac, **zsh**, network access to your LiteLLM gateway, and **your own LiteLLM API key**. The download is approximately 149 MB. It was smoke-tested on macOS 15.6. This release has no Intel Mac, Linux, or Windows binaries.
 
+### Prefer to use an existing agent?
+
+Copy this entire prompt into an agent with terminal access. It uses the prebuilt release and a pinned installer revision. The agent asks for your gateway URL; you enter your own key privately in Terminal when needed. Traveloka colleagues can copy the gateway-filled version from the internal launch guide.
+
+```text
+Set up Jet Sng's custom Codex LiteLLM on this computer. Complete the installation; do not just explain the steps.
+
+Repository: https://github.com/zjsng-trav/codex
+LiteLLM gateway: ask me for my HTTPS base URL, including /v1, before continuing.
+Default model: gpt-6.1-sol
+Expected CLI version: 0.166.0
+
+Follow these steps in order:
+
+1. Check `uname -s`, `uname -m`, and `$SHELL`. Continue only on macOS (Darwin), Apple Silicon (arm64), and zsh. Otherwise stop and explain that this installer does not support this computer.
+
+2. Download the pinned setup script. Run this entire block in one terminal call:
+
+set -e
+setup_script="$(mktemp -t codex-litellm-setup)"
+curl --proto '=https' --tlsv1.2 -fL \
+  https://raw.githubusercontent.com/zjsng-trav/codex/b353e6da3da6e46c00e25da760381ee736c9e5ad/scripts/install-codex-litellm.sh \
+  -o "$setup_script"
+bash -n "$setup_script"
+printf 'Installer path: %s\n' "$setup_script"
+
+Record the absolute installer path printed above. Shell variables may not survive your next terminal call, so use that actual path in later commands. Read the downloaded script before running it.
+
+3. Preview setup by running:
+   bash INSTALLER_PATH --gateway GATEWAY_URL --dry-run
+Replace INSTALLER_PATH with the recorded path and GATEWAY_URL with the actual URL I supplied. Quote both values. Do not use the literal placeholder names. Stop if download, syntax checking, or preview fails. Report the error; do not bypass checks or write a replacement installer.
+
+4. Run the same command without --dry-run. Let the installer select the shortcut and profile names. It handles existing names, release checksum verification, configuration, and Keychain storage.
+
+Use my own LiteLLM key. Never ask me to paste it into chat, print it, or read it out of credential files/Keychain. Let the installer reuse an existing environment key or Keychain item. If a key or macOS permission requires my input, let me enter it privately in my local Terminal or OS dialog. If your tools cannot support that, give me the exact installer command with the actual path and gateway, then wait for me to run it. Do not claim setup is complete while this is pending.
+
+5. After setup succeeds, record its printed shortcut and profile path. In a NEW zsh login shell, run the printed shortcut with --version. Confirm 0.166.0. Check the generated profile selects provider litellm, model gpt-6.1-sol, service_tier = "flex", and an existing model catalog. Do not send a model request just to test installation.
+
+Preserve my official codex command, existing aliases, profiles, and credentials. Do not use sudo, compile Rust, run GitHub Actions, or change approval/sandbox settings. Do not run codex update.
+
+Finish with: the exact shortcut to use, the profile path, verification results, and any unfinished step. Explain that the profile starts in Slow mode and /slow toggles Slow/Standard. State that gateway authentication was not tested unless a real request was separately authorized and completed.
+```
+
 ### 1. Run guided setup
 
 Read the [setup script](scripts/install-codex-litellm.sh), then paste this into Terminal:
