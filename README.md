@@ -96,7 +96,7 @@ The profile includes the `estimated-thread-cost` footer item. An absent cost mea
 
 If **`CODEX_LITELLM_API_KEY`** is already set, it takes precedence and setup does not copy it into Keychain. Otherwise, setup reuses an existing Keychain item or asks for your key. No key is written to shell configuration, the profile, repository, or package. To replace a stored key, update that service/account item in **Keychain Access**.
 
-Rerunning setup reuses its matching profile and shortcut. Conflicting names or changed profiles cause it to choose another available name. The launcher uses **`--no-daemon`**, ensuring this session runs the custom app server instead of an existing upstream daemon. Base and project configuration still apply underneath the profile.
+Rerunning setup reuses its matching profile and shortcut and refreshes the managed launcher, backing up a changed launcher before replacement. Conflicting names or changed profiles cause it to choose another available name. The launcher uses **`--no-daemon`**, ensuring this session runs the custom app server instead of an existing upstream daemon. Base and project configuration still apply underneath the profile.
 
 ## Configuration details
 
@@ -139,13 +139,17 @@ Guardian provider selection is optional: `[auto_review]` can contain `model_prov
 | No cost shown | Check that LiteLLM returns `usage.cost` in USD. Older/missing records cannot be backfilled. |
 | macOS blocks execution | Binaries are ad-hoc signed, not Apple-notarized. Verify the download and use your organization's approved installation process. |
 
-**Updates:** use releases from **this fork** and matching setup instructions. Official installers and the upstream updater distribute upstream binaries and do not preserve these changes. The current setup script pins v0.166.0 and the archive SHA-256.
+**Updates:** the generated shortcut disables the official startup update check and checks only [this fork’s releases](https://github.com/zjsng-trav/codex/releases), at most once per 24 hours during interactive launches. Checks time out after two seconds; offline checks do not prevent startup. New fork releases produce a notice with a link for manual review and installation.
+
+Run your printed shortcut with `update` (for example, `codex-litellm update`) to check the fork immediately. It never invokes the official updater or installs anything automatically. The daemon update subcommand is also intercepted. The current setup script pins v0.166.0 and the archive SHA-256.
+
+**Already installed?** Rerun the latest guided setup to refresh the managed launcher while retaining its matching profile and shortcut. This protection is in the generated launcher: use that shortcut. The bundled binary and the older manual package launcher retain upstream update behavior when invoked directly. Official npm/Homebrew installers also distribute upstream builds.
 
 **Removal:** remove the two-line Codex LiteLLM alias block from your zsh configuration, delete its matching named profile, and remove the versioned installation directory after closing its sessions. Delete the Keychain item only if no longer needed. The official `codex` installation remains usable.
 
 ## Source and verification
 
-The release contains `BUILD_INFO`, checksums, [Apache-2.0 LICENSE](LICENSE), and upstream [NOTICE](NOTICE). Its binaries matched the recorded SHA-256 values. Package installation, CLI version/help, and refusal to overwrite an existing installation were smoke-tested. The guided setup was also smoke-tested against an existing command and alias, a path containing spaces, repeat runs, and offline profile/catalog loading. Source tests cover Flex retries, cost persistence, and UI snapshots. This setup/documentation change does not rebuild or rerun the Rust suite.
+The release contains `BUILD_INFO`, checksums, [Apache-2.0 LICENSE](LICENSE), and upstream [NOTICE](NOTICE). Its binaries matched the recorded SHA-256 values. Package installation, CLI version/help, and refusal to overwrite an existing installation were smoke-tested. The guided setup was also smoke-tested against an existing command and alias, a path containing spaces, repeat runs, and offline profile/catalog loading. Source tests cover Flex retries, cost persistence, and UI snapshots. The launcher regression suite covers fork-only checks, updater interception, argument forwarding, cached notices, malformed/upstream releases, and offline startup. Run it on macOS with `python3 scripts/tests/test_codex_litellm_launcher.py`. No Rust code or release binaries were changed.
 
 For other platforms, use this fork's source and pinned Rust toolchain. [Upstream build guidance](docs/install.md) describes the process; substitute **`https://github.com/zjsng-trav/codex.git`** when cloning. Other platforms have not been validated for this custom release.
 

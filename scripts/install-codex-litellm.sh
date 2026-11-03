@@ -12,6 +12,7 @@ config_dir="${CODEX_HOME:-$HOME/.codex}"
 gateway=
 shell_rc=
 dry_run=0
+managed_marker="# Managed by zjsng-trav/codex LiteLLM setup $version."
 
 die() { printf 'codex-litellm setup: %s\n' "$*" >&2; exit 1; }
 
@@ -100,7 +101,7 @@ for attempt in $(seq 0 99); do
     else
         name_status=$?
     fi
-    if [ "$name_status" = 0 ] && [ -x "$launcher" ] && cmp -s "$profile" <(printf '%s\n' "$profile_text"); then
+    if [ "$name_status" = 0 ] && [ -x "$launcher" ] && grep -Fqx "$managed_marker" "$launcher" && cmp -s "$profile" <(printf '%s\n' "$profile_text"); then
         break
     fi
     if [ "$name_status" = 10 ] && [ ! -e "$profile" ] && [ ! -L "$profile" ] && [ ! -e "$launcher" ] && [ ! -L "$launcher" ]; then
@@ -142,25 +143,103 @@ mkdir -p "$config_dir" "$prefix/launchers" "$(dirname "$shell_rc")"
 if [ ! -e "$profile" ] && [ ! -L "$profile" ]; then
     (set -o noclobber; printf '%s\n' "$profile_text" > "$profile")
 fi
-if [ ! -e "$launcher" ] && [ ! -L "$launcher" ]; then
-    (set -o noclobber; cat > "$launcher" <<EOF
-#!/bin/sh
-# Managed by zjsng-trav/codex LiteLLM setup $version.
-set -eu
-launcher_dir=\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd)
-binary="\$launcher_dir/../libexec/codex-litellm/codex"
-case "\${1:-}" in --version|-V|--help|-h) exec "\$binary" "\$@" ;; esac
-if [ -z "\${CODEX_LITELLM_API_KEY:-}" ]; then
-    CODEX_LITELLM_API_KEY=\$(security find-generic-password -a "\$USER" -s codex-litellm -w 2>/dev/null) || {
-        printf '%s\\n' 'No LiteLLM key found. Rerun setup or set CODEX_LITELLM_API_KEY.' >&2
+# Refresh only the managed launcher selected above; profiles and aliases stay intact.
+launcher_tmp=$(mktemp "$prefix/launchers/.setup.XXXXXX")
+{
+    printf '#!/bin/sh\n%s\nset -eu\nprofile=%s\ncurrent_version=%s\n' "$managed_marker" "$shortcut" "$version"
+    cat <<'LAUNCHER'
+launcher_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+binary="$launcher_dir/../libexec/codex-litellm/codex"
+
+check_fork_update() {
+    update_mode=$1
+    release_base=https://github.com/zjsng-trav/codex/releases
+    cache_file="$launcher_dir/../fork-release-cache"
+    latest_url=
+    checked_at=$(stat -f %m "$cache_file" 2>/dev/null || printf 0)
+    case "$checked_at" in ''|*[!0-9]*) checked_at=0 ;; esac
+    now=$(date +%s)
+    if [ "$update_mode" = startup ] && [ "$now" -ge "$checked_at" ] && [ "$((now - checked_at))" -lt 86400 ]; then
+        IFS= read -r latest_url < "$cache_file" || true
+    else
+        # A failed or rate-limited check never falls back to an upstream channel.
+        if ! latest_url=$(curl --proto '=https' --proto-redir '=https' --connect-timeout 1 --max-time 2 \
+            --head --location --fail --silent --show-error --output /dev/null \
+            --write-out '%{url_effective}' "$release_base/latest" 2>/dev/null); then
+            touch "$cache_file" 2>/dev/null || true
+            if [ "$update_mode" = manual ]; then
+                printf 'Could not check custom releases. Review: %s\n' "$release_base" >&2
+                return 1
+            fi
+            return 0
+        fi
+        cache_tmp=$(mktemp "$launcher_dir/../.fork-release-cache.XXXXXX" 2>/dev/null) || cache_tmp=
+        if [ -n "$cache_tmp" ]; then
+            printf '%s\n' "$latest_url" > "$cache_tmp"
+            mv "$cache_tmp" "$cache_file" 2>/dev/null || rm -f "$cache_tmp"
+        fi
+    fi
+    # Accept only stable releases owned by this fork, including cached results.
+    latest_version=${latest_url#"$release_base/tag/codex-litellm-v"}
+    if [ "$latest_version" = "$latest_url" ] || ! printf '%s\n' "$latest_version" | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/ { found=1 } END { exit !found }'; then
+        if [ "$update_mode" = manual ]; then
+            printf 'Could not identify a stable custom release. Review: %s\n' "$release_base" >&2
+            return 1
+        fi
+        return 0
+    fi
+    if awk -v latest="$latest_version" -v current="$current_version" 'BEGIN {
+        split(latest, newer, "."); split(current, installed, ".")
+        for (i=1; i<=3; i++) {
+            if (newer[i]+0 > installed[i]+0) exit 0
+            if (newer[i]+0 < installed[i]+0) exit 1
+        }
+        exit 1
+    }'; then
+        printf '\nCodex LiteLLM update available: %s -> %s\nReview and update manually: %s\n' \
+            "$current_version" "$latest_version" "$latest_url" >&2
+    elif [ "$update_mode" = manual ]; then
+        printf 'Codex LiteLLM %s is current. Custom releases: %s\n' "$current_version" "$release_base"
+    fi
+}
+
+# Intercept updater subcommands even when global options precede them.
+# Values belonging to global options are never treated as commands.
+expect_value=0
+command_path=
+for argument do
+    if [ "$expect_value" = 1 ]; then expect_value=0; continue; fi
+    case "$argument" in
+        --) break ;;
+        -c|--config|-p|--profile|-m|--model|-i|--image|-s|--sandbox|-a|--ask-for-approval|-C|--cd|--add-dir|--remote|--remote-auth-token-env|--enable|--disable|--local-provider)
+            expect_value=1; continue ;;
+        -*) continue ;;
+    esac
+    command_path="${command_path:+$command_path }$argument"
+    case "$command_path" in
+        update|'app-server daemon update') check_fork_update manual; exit $? ;;
+        app-server|'app-server daemon') continue ;;
+        *) break ;;
+    esac
+done
+case "${1:-}" in --version|-V|--help|-h) exec "$binary" "$@" ;; esac
+if [ -z "${CODEX_LITELLM_API_KEY:-}" ]; then
+    CODEX_LITELLM_API_KEY=$(security find-generic-password -a "$USER" -s codex-litellm -w 2>/dev/null) || {
+        printf '%s\n' 'No LiteLLM key found. Rerun setup or set CODEX_LITELLM_API_KEY.' >&2
         exit 1
     }
     export CODEX_LITELLM_API_KEY
 fi
-exec "\$binary" --no-daemon -p "$shortcut" "\$@"
-EOF
-    )
-    chmod 0755 "$launcher"
+if [ -t 0 ] && [ -t 2 ]; then check_fork_update startup; fi
+exec "$binary" --no-daemon -p "$profile" -c check_for_update_on_startup=false "$@"
+LAUNCHER
+} > "$launcher_tmp"
+chmod 0755 "$launcher_tmp"
+if [ -f "$launcher" ] && cmp -s "$launcher_tmp" "$launcher"; then
+    rm -f "$launcher_tmp"
+else
+    if [ -f "$launcher" ]; then cp -p "$launcher" "$launcher.backup.$(date +%Y%m%d%H%M%S).$$"; fi
+    mv "$launcher_tmp" "$launcher"
 fi
 if [ ! -f "$shell_rc" ] || ! grep -Fqx "$alias_line" "$shell_rc"; then
     if [ -f "$shell_rc" ]; then cp -p "$shell_rc" "$shell_rc.codex-litellm-backup.$(date +%Y%m%d%H%M%S).$$"; fi
